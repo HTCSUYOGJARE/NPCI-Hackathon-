@@ -9,25 +9,66 @@ class HospitalSystem:
         self.scheduler = EnterpriseScheduler(ROOMS, SURGEONS, EQUIPMENT)
         self.current_schedule = None
         self.active_patients = []
+        
+        # Load AI Model
         try:
             self.artifacts = joblib.load("surgery_model_artifacts.pkl")
             self.model = self.artifacts['model']
-        except: self.model = None
+            print("✅ AI Model Loaded Successfully")
+        except:
+            print("⚠️ Model not found. Using fallback durations.")
+            self.model = None
 
     def predict_duration(self, patient_row):
-        return 120 # Fallback 
+        """
+        Restored AI Logic: Uses the XGBoost model to predict duration.
+        """
+        if not self.model: 
+            return 120 # Fallback if model missing
+        
+        try:
+            # Helper to handle "Unseen Labels" without crashing
+            # If the model has never seen "RobotAssisted", it maps it to a default
+            def safe_transform(encoder, value):
+                try:
+                    return encoder.transform([value])[0]
+                except:
+                    return encoder.transform([encoder.classes_[0]])[0]
+
+            # 1. Prepare Input Vector (Exact columns from training)
+            input_df = pd.DataFrame([{
+                'Age': patient_row['Age'],
+                'Gender': safe_transform(self.artifacts['le_gender'], patient_row['Gender']),
+                'BMI': patient_row['BMI'],
+                'SurgeryType': safe_transform(self.artifacts['le_surgery'], patient_row['SurgeryType']),
+                'AnesthesiaType': safe_transform(self.artifacts['le_anesthesia'], patient_row['AnesthesiaType']),
+                'ASA_Score': patient_row['ASA_Score'],
+                'Has_Comorbidity': int(patient_row.get('Has_Comorbidity', 0))
+            }])
+            
+            # 2. Predict
+            pred = self.model.predict(input_df)[0]
+            return int(max(30, pred)) # Minimum 30 mins
+            
+        except Exception as e:
+            print(f"⚠️ Prediction Error for {patient_row.get('PatientID', '?')}: {e}")
+            return 120 # Safe Fallback
 
     def start_day(self, csv_file):
         df = pd.read_csv(csv_file)
         self.active_patients = []
         for _, row in df.iterrows():
+            # CALL THE AI HERE
+            pred_dur = self.predict_duration(row)
+            
             self.active_patients.append({
                 'id': row['PatientID'], 'type': row['SurgeryType'],
-                'surgeon': row['Surgeon'], 'duration': 120,
+                'surgeon': row['Surgeon'], 
+                'duration': pred_dur, # <--- AI PREDICTION IS USED HERE
                 'asa_score': row['ASA_Score'], 
                 'needs_c_arm': row.get('Needs_CArm', False),
                 'needs_robot': row.get('Needs_Robot', False),
-                'ready_time': 480 # 8:00 AM
+                'ready_time': 480 # 8:00 AM Default
             })
         self.current_schedule = self.scheduler.solve(self.active_patients)
         return self.current_schedule
@@ -39,17 +80,16 @@ class HospitalSystem:
         target_p = next((p for p in self.active_patients if p['id'] == patient_id), None)
         
         if target_p:
-            # FIX: Base new time on SCHEDULED time
+            # Logic: New Ready Time = Scheduled + Delay
             scheduled_start = 480 
             if self.current_schedule is not None:
                 row = self.current_schedule[self.current_schedule['Patient ID'] == patient_id]
                 if not row.empty:
                     scheduled_start = row.iloc[0]['start_mins']
             
-            # New Ready Time = Scheduled + Delay
             target_p['ready_time'] = max(scheduled_start + delay_mins, now_mins)
             
-        # Unpin this patient to allow movement
+        # Unpin this specific patient
         return self.recalculate_schedule(now_mins, ignore_pinning_for=patient_id)
 
     def handle_duration_change(self, patient_id, change_mins, current_time_str):
