@@ -13,7 +13,8 @@ class EnterpriseScheduler:
 
     def solve(self, patients):
         self.model = cp_model.CpModel()
-        horizon = 48 * 60 # 48 Hours Horizon
+        # Horizon: 48 Hours to prevent midnight crashes
+        horizon = 48 * 60 
         
         starts = {}
         ends = {}
@@ -31,8 +32,7 @@ class EnterpriseScheduler:
             start_var = self.model.NewIntVar(0, horizon, f'start_{pid}')
             end_var = self.model.NewIntVar(0, horizon, f'end_{pid}')
             
-            # --- START DELAY LOGIC ---
-            # Enforce start after 'ready_time'
+            # --- START TIME CONSTRAINTS ---
             min_start = max(CONSTANTS['DAY_START'], p.get('ready_time', 0))
             self.model.Add(start_var >= min_start)
             
@@ -70,7 +70,7 @@ class EnterpriseScheduler:
 
                 valid_rooms.append(x_pr)
                 
-                # Room blocked for Duration + Turnover (Cleaning)
+                # Room blocked for Duration + Turnover
                 dur_clean = dur + CONSTANTS['TURNOVER']
                 r_int = self.model.NewOptionalIntervalVar(
                     start_var, dur_clean, self.model.NewIntVar(0, horizon, ''), 
@@ -104,23 +104,32 @@ class EnterpriseScheduler:
         status = self.solver.Solve(self.model)
         
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            res = []
+            results = []
             for p in patients:
                 pid = p['id']
-                st_val = self.solver.Value(starts[pid])
-                en_val = self.solver.Value(ends[pid])
-                r_name = "Waitlist"
+                start = self.solver.Value(starts[pid])
+                end = self.solver.Value(ends[pid])
+                
+                # Find Assigned Room
+                assigned_room = "Waitlist"
                 for r in self.rooms:
                     rid = r['id']
                     if (pid, rid) in room_vars and self.solver.Value(room_vars[(pid, rid)]) == 1:
-                        r_name = r['name']; break
+                        assigned_room = r['name']
+                        break
                 
-                res.append({
-                    "Patient ID": pid, "Type": p['type'], "Surgeon": p.get('surgeon'),
-                    "Room": r_name, "Start Time": f"{st_val//60:02d}:{st_val%60:02d}",
-                    "End Time": f"{en_val//60:02d}:{en_val%60:02d}", "Duration": p['duration'],
-                    "start_mins": st_val, "end_mins": en_val, "Risk (ASA)": p.get('asa_score', 1)
+                results.append({
+                    "Patient ID": pid,
+                    "Type": p['type'],
+                    "Surgeon": p.get('surgeon'),
+                    "Room": assigned_room,
+                    "Start Time": f"{start//60:02d}:{start%60:02d}",
+                    "End Time": f"{end//60:02d}:{end%60:02d}",
+                    "Duration": p['duration'],
+                    "start_mins": start,
+                    "end_mins": end,
+                    "Risk (ASA)": p.get('asa_score', 1)
                 })
-            return pd.DataFrame(res).sort_values('start_mins')
+            return pd.DataFrame(results).sort_values('start_mins')
         else:
             return None
