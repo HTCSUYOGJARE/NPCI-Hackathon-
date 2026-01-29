@@ -22,7 +22,7 @@ ROOMS = [
     {'id': 12, 'name': 'OR-12 (Day)', 'type': 'General', 'supported': ['Cosmetic', 'General']}
 ]
 
-# 2. SURGEONS (Full Roster)
+# 2. SURGEONS (Full Roster: Main + Visiting)
 SURGEONS = {
     # Main Staff
     'Dr. Strange': ['Neurological'],
@@ -52,7 +52,7 @@ EQUIPMENT = {
 # 4. RULES
 CONSTANTS = {
     'DAY_START': 8 * 60,    # 08:00 AM
-    'DAY_END': 23 * 60,     # 11:00 PM (Extended)
-    'TURNOVER': 30,         # Room cleaning time
+    'DAY_END': 23 * 60,     # 11:00 PM
+    'TURNOVER': 30,         # Cleaning time
     'SURGEON_BREAK': 30     # Mandatory Surgeon Break
 }
