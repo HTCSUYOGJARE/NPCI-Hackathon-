@@ -16,8 +16,7 @@ st.title("🏥 Smart OR Command Center")
 st.sidebar.subheader("1. Setup")
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type=['csv'])
 if uploaded_file and st.sidebar.button("Generate Schedule"):
-    with st.spinner("Optimizing..."):
-        st.session_state['schedule'] = st.session_state['system'].start_day(uploaded_file)
+    st.session_state['schedule'] = st.session_state['system'].start_day(uploaded_file)
     st.success("Schedule Ready!")
 
 st.sidebar.divider()
@@ -30,7 +29,7 @@ if st.session_state['schedule'] is not None:
     with tab1:
         st.write("**Surgeon/Patient Late?**")
         p_list = st.session_state['schedule']['Patient ID'].tolist()
-        p_id = st.selectbox("Patient", p_list, key="start")
+        p_id = st.selectbox("Select Patient", p_list, key="start")
         
         delay = st.number_input("Minutes to ADD to Scheduled Start:", 0, 180, 15) 
         cur_time = st.time_input("Current Time Check", value=None, key="time1")
