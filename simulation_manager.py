@@ -27,7 +27,7 @@ class HospitalSystem:
                 'asa_score': row['ASA_Score'], 
                 'needs_c_arm': row.get('Needs_CArm', False),
                 'needs_robot': row.get('Needs_Robot', False),
-                'ready_time': 480 # 8:00 AM Default
+                'ready_time': 480 # 8:00 AM
             })
         self.current_schedule = self.scheduler.solve(self.active_patients)
         return self.current_schedule
@@ -39,17 +39,17 @@ class HospitalSystem:
         target_p = next((p for p in self.active_patients if p['id'] == patient_id), None)
         
         if target_p:
-            # FIX: Base new time on SCHEDULED time, not current time
+            # FIX: Base new time on SCHEDULED time
             scheduled_start = 480 
             if self.current_schedule is not None:
                 row = self.current_schedule[self.current_schedule['Patient ID'] == patient_id]
                 if not row.empty:
                     scheduled_start = row.iloc[0]['start_mins']
             
-            # New Ready Time = Scheduled Start + Delay
+            # New Ready Time = Scheduled + Delay
             target_p['ready_time'] = max(scheduled_start + delay_mins, now_mins)
             
-        # Unpin this specific patient
+        # Unpin this patient to allow movement
         return self.recalculate_schedule(now_mins, ignore_pinning_for=patient_id)
 
     def handle_duration_change(self, patient_id, change_mins, current_time_str):
@@ -64,7 +64,6 @@ class HospitalSystem:
         h, m = map(int, current_time_str.split(':'))
         now_mins = h * 60 + m
         
-        # Simple Map
         main_surgeon = {'Neurological': 'Dr. Strange', 'Cardiovascular': 'Dr. Yang'}.get(p_type, 'Dr. House')
         
         self.active_patients.append({
@@ -80,7 +79,7 @@ class HospitalSystem:
             for p in self.active_patients:
                 if 'EMERG' in p['id']: continue
                 
-                # CRITICAL: UNPIN Logic
+                # UNPIN Logic
                 if p['id'] == ignore_pinning_for:
                     p.pop('fixed_start', None)
                     p.pop('fixed_room', None)
